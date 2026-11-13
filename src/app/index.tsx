@@ -1,7 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 // 1. Import useRouter
 import { useRouter } from 'expo-router';
+
 
 export default function LoginScreen() {
   // 2. Inisialisasi router
@@ -9,17 +11,47 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleLogin = () => {
+  // 1. Tambahkan kata 'async' di sini
+  const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Email dan password tidak boleh kosong!');
       return;
     }
 
-    // 3. Gunakan router.replace untuk pindah halaman tanpa bisa di-back
-    if (email === 'admin@klinik.com') {
-      router.replace('/admin/dashboard'); 
-    } else {
-      router.replace('/patient/dashboard');
+    try {
+      // 2. Ganti IP ini dengan IP LAN Wi-Fi PC Anda saat ini. 
+      // Port bawaan Expo adalah 8081.
+      const API_URL = 'http://192.168.0.102:8081/api/login';
+
+      // 3. Proses request Fetch
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      // 4. Parsing response dari API
+      const data = await response.json();
+
+      if (response.ok && data.status === 'success') {
+        // SIMPAN SESI KE MEMORI HP
+        await AsyncStorage.setItem('userToken', data.token);
+        await AsyncStorage.setItem('userRole', data.role);
+        // Jika berhasil, cek role dari API
+        if (data.role === 'admin') {
+          router.replace('/admin/dashboard');
+        } else {
+          router.replace('/patient/dashboard');
+        }
+      } else {
+        // Jika API merespons dengan error (misal password salah)
+        Alert.alert('Login Gagal', data.message || 'Data tidak ditemukan');
+      }
+    } catch (error) {
+      Alert.alert('Koneksi Error', 'Gagal terhubung ke server API');
+      console.error(error);
     }
   };
 
@@ -47,7 +79,15 @@ export default function LoginScreen() {
           <TouchableOpacity style={styles.button} onPress={handleLogin}>
             <Text style={styles.buttonText}>Masuk</Text>
           </TouchableOpacity>
+
+        <View style={styles.registerContainer}>
+          <Text style={styles.registerText}>Belum punya akun? </Text>
+          <TouchableOpacity onPress={() => router.push('/register')}>
+            <Text style={styles.registerLink}>Daftar Sekarang</Text>
+          </TouchableOpacity>
+        </View>
     </View>
+
   );
 }
 
@@ -84,5 +124,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+
+  registerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 25,
+  },
+  registerText: {
+    color: '#3498db',
+    fontSize: 14,
+  },
+  registerLink: {
+    color: '#3498db',
+    fontSize: 14,
+    fontWeight: 'bold',
   }
 });

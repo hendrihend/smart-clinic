@@ -1,41 +1,127 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
-import { useRouter } from 'expo-router'; // 1. Import router
-import { useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useBookingStore } from '../../store/useBookingStore';
 
-const DOCTORS = [
-  { id: '1', name: 'dr. Budi Santoso', spec: 'Poli Umum' },
-  { id: '2', name: 'dr. Anita Ratnasari', spec: 'Spesialis Penyakit Dalam' },
-  { id: '3', name: 'dr. Sarah Amalia', spec: 'Poli Gigi' },
-];
-
-const TIME_SLOTS = ['09:00', '10:30', '13:00', '15:30', '19:00'];
+// Interface untuk TypeScript
+interface Doctor {
+  id: string;
+  name: string;
+  spec: string;
+}
 
 export default function BookingScreen() {
-  const router = useRouter(); // 2. Inisialisasi router
-  const [selectedDoctor, setSelectedDoctor] = useState(DOCTORS[0].id);
+  const router = useRouter();
+  
+  // State untuk menyimpan data dari API
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [timeSlots, setTimeSlots] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true); // State loading
+
+  // State form pilihan user
+  const [selectedDoctor, setSelectedDoctor] = useState('');
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selectedTime, setSelectedTime] = useState(TIME_SLOTS[0]);
+  const [selectedTime, setSelectedTime] = useState('');
 
-  // Tambahkan tipe DateTimePickerEvent agar tidak error merah di TypeScript
+  // Berjalan sekali saat halaman dimuat
+  useEffect(() => {
+    fetchDoctors();
+  }, []);
+
+  const fetchDoctors = async () => {
+    try {
+      // Ganti IP sesuai dengan PC Anda (port bawaan Expo: 8081)
+      const response = await fetch('http://192.168.0.102:8081/api/doctors');
+      const data = await response.json();
+
+      if (response.ok && data.status === 'success') {
+        setDoctors(data.doctors);
+        setTimeSlots(data.time_slots);
+        
+        // Set nilai default picker ke item pertama
+        if (data.doctors.length > 0) setSelectedDoctor(data.doctors[0].id);
+        if (data.time_slots.length > 0) setSelectedTime(data.time_slots[0]);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Gagal memuat jadwal dokter');
+      console.error(error);
+    } finally {
+      setIsLoading(false); // Matikan loading setelah selesai
+    }
+  };
+
   const onChangeDate = (event: DateTimePickerEvent, selectedDate?: Date) => {
     const currentDate = selectedDate || date;
     setShowDatePicker(Platform.OS === 'ios');
     setDate(currentDate);
   };
 
-  const handleBooking = () => {
-    Alert.alert(
-      "Booking Berhasil!", 
-      `Antrian Anda telah dijadwalkan pada:\n${date.toLocaleDateString('id-ID')} jam ${selectedTime}`,
-      [
-        // 3. Gunakan router untuk pindah halaman
-        { text: "OK", onPress: () => router.replace('/patient/history') }
-      ]
-    );
+  const handleBooking = async () => {
+    try {
+      // 1. Siapkan format data yang akan dikirim
+      // Kita ubah format Date bawaan JS menjadi string (misal: "2026-11-15")
+      const payload = {
+        doctorId: selectedDoctor,
+        date: date.toISOString().split('T')[0], 
+        time: selectedTime
+      };
+
+      // 2. Kirim data ke API menggunakan metode POST
+      const response = await fetch('http://192.168.0.102:8081/api/booking', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      // 3. Cek apakah server merespons sukses
+      if (response.ok && data.status === 'success') {
+        // 1. Cari detail dokter yang dipilih untuk ditampilkan di riwayat
+        const selectedDocObj = doctors.find(d => d.id === selectedDoctor);
+        
+        if (selectedDocObj) {
+          // 2. Tambahkan data ke Zustand (Optimistic Update)
+          const { addBooking } = useBookingStore.getState(); // Cara memanggil fungsi tanpa hook jika di dalam event handler (atau bisa dideklarasikan di atas)
+          
+          addBooking({
+            id: Math.random().toString(), // Dummy ID sementara sebelum fetch ulang
+            doctorName: selectedDocObj.name,
+            specialist: selectedDocObj.spec,
+            date: date.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+            time: `${selectedTime} WIB`,
+            status: 'Menunggu'
+          });
+        }
+
+        Alert.alert(
+          "Booking Berhasil!", 
+          `Antrian Anda telah dijadwalkan pada:\n${date.toLocaleDateString('id-ID')} jam ${selectedTime}`,
+          [{ text: "OK", onPress: () => router.replace('/patient/history') }]
+        );
+      } else {
+        Alert.alert("Gagal Booking", data.message || "Terjadi kesalahan sistem");
+      }
+    } catch (error) {
+      Alert.alert("Koneksi Error", "Gagal mengirim data ke server API");
+      console.error(error);
+    }
   };
+
+  // Jika masih loading, tampilkan indikator putar (Spinner)
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#3498db" />
+        <Text style={{ marginTop: 10, color: '#7f8c8d' }}>Memuat jadwal dokter...</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -47,7 +133,8 @@ export default function BookingScreen() {
             onValueChange={(itemValue) => setSelectedDoctor(itemValue)}
             style={styles.picker}
           >
-            {DOCTORS.map((doc) => (
+            {/* Looping data dari state doctors */}
+            {doctors.map((doc) => (
               <Picker.Item key={doc.id} label={`${doc.name} - ${doc.spec}`} value={doc.id} />
             ))}
           </Picker>
@@ -77,7 +164,8 @@ export default function BookingScreen() {
       <View style={styles.formGroup}>
         <Text style={styles.label}>Pilih Jam</Text>
         <View style={styles.timeContainer}>
-          {TIME_SLOTS.map((time, index) => (
+          {/* Looping data dari state timeSlots */}
+          {timeSlots.map((time, index) => (
             <TouchableOpacity 
               key={index}
               style={[styles.timeButton, selectedTime === time && styles.timeButtonActive]}

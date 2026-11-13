@@ -1,24 +1,38 @@
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+// 1. Import store yang baru saja dibuat
+import { HistoryItem, useBookingStore } from '../../store/useBookingStore';
 
-// 1. Tambahkan Interface Data
-interface HistoryItem {
-  id: string;
-  doctorName: string;
-  specialist: string;
-  date: string;
-  time: string;
-  status: 'Menunggu' | 'Selesai' | 'Dibatalkan';
-}
-
-// 2. Terapkan tipe pada array
-const HISTORY_DATA: HistoryItem[] = [
-  { id: '1', doctorName: 'dr. Anita Ratnasari', specialist: 'Spesialis Penyakit Dalam', date: 'Senin, 9 Nov 2026', time: '09:00 WIB', status: 'Menunggu' },
-  { id: '2', doctorName: 'dr. Budi Santoso', specialist: 'Poli Umum', date: 'Rabu, 4 Nov 2026', time: '10:30 WIB', status: 'Selesai' },
-  { id: '3', doctorName: 'dr. Sarah Amalia', specialist: 'Poli Gigi', date: 'Kamis, 15 Okt 2026', time: '13:00 WIB', status: 'Selesai' },
-  { id: '4', doctorName: 'dr. Budi Santoso', specialist: 'Poli Umum', date: 'Senin, 5 Okt 2026', time: '09:00 WIB', status: 'Dibatalkan' },
-];
 
 export default function HistoryScreen() {
+  // 2. Panggil state global dan aksinya dari Zustand
+  const { historyData, setHistoryData } = useBookingStore();
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Optimasi: Hanya fetch ke API jika data masih kosong
+    if (historyData.length === 0) {
+      fetchHistory();
+    } else {
+      setIsLoading(false); // Langsung tampilkan data dari memori
+    }
+  }, []);
+
+  const fetchHistory = async () => {
+    try {
+      const response = await fetch('http://192.168.0.102:8081/api/history');
+      const data = await response.json();
+
+      if (response.ok && data.status === 'success') {
+        setHistoryData(data.data); // Simpan ke Global State Zustand
+      }
+    } catch (error) {
+      Alert.alert('Koneksi Error', 'Tidak dapat terhubung ke server');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const getStatusStyle = (status: string) => {
     switch (status) {
       case 'Menunggu': return { bg: '#fff3cd', text: '#856404' };
@@ -27,6 +41,16 @@ export default function HistoryScreen() {
       default: return { bg: '#e2e3e5', text: '#383d41' };
     }
   };
+
+  // Tampilkan indikator loading saat data masih di-fetch
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#3498db" />
+        <Text style={{ marginTop: 10, color: '#7f8c8d' }}>Memuat riwayat kunjungan...</Text>
+      </View>
+    );
+  }
 
   // 3. Tambahkan tipe { item: HistoryItem } agar tidak garis merah
   const renderItem = ({ item }: { item: HistoryItem }) => {
@@ -62,7 +86,7 @@ export default function HistoryScreen() {
   return (
     <View style={styles.container}>
       <FlatList
-        data={HISTORY_DATA}
+        data={historyData}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContainer}

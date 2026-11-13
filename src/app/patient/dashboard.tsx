@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 // 1. Import useRouter dari expo-router
 import { useRouter } from 'expo-router';
@@ -61,7 +62,12 @@ export default function PatientDashboard() {
         {/* Tombol Logout Pasien (Tambahan) */}
         <TouchableOpacity 
           style={styles.logoutButton} 
-          onPress={() => router.replace('/')}
+          onPress={async () => {
+            // Menghapus semua data sesi di lokal memori
+            await AsyncStorage.clear(); 
+            // Kembali ke halaman Login
+            router.replace('/');
+          }}
           activeOpacity={0.8}
         >
           <Text style={styles.logoutText}>Keluar (Logout)</Text>
